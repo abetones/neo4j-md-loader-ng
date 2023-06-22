@@ -33,7 +33,7 @@ routes.get('/parseIssues', async (req, res) => {
     // and check that the constraint is online
 
     driver.executeQuery(
-      'create constraint if not exists for (n:Version) require (n.version) is node key',
+      'create constraint if not exists for (n:Release) require (n.version) is node key',
       {},
       {database: process.env.dbName}
     )
@@ -77,7 +77,7 @@ routes.get('/parseIssues', async (req, res) => {
             WITH release, split(release.version,'.') as rsplit
             WHERE not exists { (release)-[:PARENT]->() }
             AND  size(rsplit) = 3
-            MERGE (pr:Release{version: apoc.text.join(vsplit[0..-1], '.')})
+            MERGE (pr:Release{version: apoc.text.join(rsplit[0..-1], '.')})
             MERGE (release)-[:PARENT]->(pr)
             return collect(pr) as maintenances
           }
@@ -88,7 +88,7 @@ routes.get('/parseIssues', async (req, res) => {
             WITH release, split(release.version,'.') as rsplit
             WHERE not exists { (release)-[:PARENT]->() }
             AND  size(rsplit) = 2
-            MERGE (pr:Release{version: apoc.text.join(vsplit[0..-1], '.')})
+            MERGE (pr:Release{version: apoc.text.join(rsplit[0..-1], '.')})
             MERGE (release)-[:PARENT]->(pr)
             return collect(pr) as features
           }
