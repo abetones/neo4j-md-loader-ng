@@ -22,7 +22,7 @@ Put the markdown file containing issues in top level folder.
 - create a .env file with contents like:
 
 ```
-dbName="tshoot"
+dbName="tshoot2"
 dbUser="neo4j"
 dbPass="my_secret_password"
 dbUri="neo4j://localhost:7687"
