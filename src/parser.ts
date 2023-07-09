@@ -1,10 +1,11 @@
 import Issue from './issue';
 
 class Parser {
-  parse(markdown:string) {
+
+  parse(markdown:string) { //, releases:typeof Release[]) {
     let issues: typeof Issue[] = [];
     let fieldName = "";
-    const lines = markdown.split("\n\n");
+    const lines = markdown.split("\n");
 
     let issue:typeof Issue = {
         jiraPrimary: "",
@@ -56,7 +57,7 @@ class Parser {
             if(lineParts.length === 3) {
                 issue.jiraPrimaryDateString = lineParts[0].trim();
 
-                issue.affectedVersionOldest = lineParts[1].trim();
+                issue.affectedVersionOldest = lineParts[1].trim().toLowerCase();
                 // versionString can be various representations including:
                 // v.4.1.1
                 // v.3.0.x
@@ -66,9 +67,12 @@ class Parser {
                 if(vs.length === 1) {
                     vs = lineParts[1].trim().trim().split("through");
                 }
+                if(vs.length === 1) {
+                    vs = lineParts[1].trim().trim().split("-");
+                }
                 vs.forEach(v => {
                     if (v.toLowerCase().trim() === "all versions") {
-                        v="All versions";
+                        v="";
                     } else {
                         v=v.replace("All","");
                         v=v.replace("versions","");
@@ -76,18 +80,20 @@ class Parser {
                         v=v.replace("version","");
                         v=v.replace("v.","")
                         v=v.replace("v","")
-                        v=v.replace(".x","")
-                        v=v.replace(".X","")
+                        // v=v.replace(".x","")
+                        // v=v.replace(".X","")
                     }
-                    console.log(v)
-                    versions.push(v.trim());
+                    //console.log(v.trim())
+                    versions.push(v.trim().toLowerCase());
                 });
 
-                //@todo fill in the range of values between the version numbers
-                // this requires knowledge of the published version numbers for this product!
+                //@todo here interpret the versions
+                // might have a number, might have something like "All versions"
+                // we want both oldest and newest to point to a third-tier number (3.2.1) rather than 3.x or 3
 
                 issue.affectedVersionOldest = versions[0];
                 issue.affectedVersionNewest = versions[versions.length - 1];
+
                 issue.affectedVersions = versions;
 
                 const descriptionParts = lineParts[2].split("[");

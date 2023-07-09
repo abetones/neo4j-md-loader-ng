@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import driver from './issuesDb';
 import parser from './parser';
+import releaseParser from './releaseParser';
 import * as fs from 'fs';
 require("dotenv").config();
+
 const routes = Router();
 
 routes.get('/', (req, res) => {
@@ -11,13 +13,9 @@ routes.get('/', (req, res) => {
 
 routes.get('/parseIssues', async (req, res) => {
 
-  // we could accept a POSTed file or JSON,
-  // but for this proof of concept, 
-  // executing the GET route simply ingests the markdown 
-  // from a hard-coded file, and returns the resulting issues in a JSON array
-
   try {
-    const md = fs.readFileSync(process.env.issuesFilePath,'utf8');
+    // load the issues into memory
+    const md = fs.readFileSync(process.env.issuesFilePath,'utf8'); //'issues.mdx'
     const issues = parser(md);
     // clean db before loading issues -- for testing, do not leave in long-term
     driver.executeQuery(
@@ -48,15 +46,95 @@ routes.get('/parseIssues', async (req, res) => {
     .then((result) => { })//return result.records.map( (r) => r.get('Issue') ) })
     .catch( (error) => { return error}) //console.error(error) })
 
-    issues.forEach(function(issue) {
-      // Write the data to the database -> construct the right query
-      // TO-DO: send batch of issues and use UNWIND to create nodes
-      //
-      // I think Håkan's idea is that we create all the Release nodes 
-      // *at the moment we create the issue related to them*
-      // and then as a second step (separate route) create the remaining
-      // Release nodes (using MERGE so that there are no duplicate nodes)
-      //
+    // load the releases into memory and get their relationships to one another
+    const releasesString = fs.readFileSync(process.env.releasesFilePath,'utf8'); //'releases.json'
+    const releases = releaseParser(releasesString, issues);
+
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    // clear out the db
+    driver.executeQuery(
+      'MATCH (n) DETACH DELETE n',
+      {},
+      {database: process.env.dbName} //'neo4j'
+    )
+    .then((result) => { })//return result.records.map( (r) => r.get('Issue') ) })
+    .catch( (error) => { return error}) //console.error(error) })
+      await sleep(100);
+
+
+      driver.executeQuery(
+      'create constraint if not exists for (n:Release) require (n.version) is node key',
+      {},
+      {database: process.env.dbName} //neo4j
+    )
+    .then((result) => { })//return result.records.map( (r) => r.get('Issue') ) })
+    .catch( (error) => { return error}) //console.error(error) })
+
+    releases.forEach(async function(release){    
+      driver.executeQuery(
+        `MERGE (release:Release{version: $version})
+         SET release.type= $type, 
+         release.version= $version, 
+         release.versions= [$version], 
+         release.versionMajor= $versionMajor, 
+         release.versionMinor= $versionMinor, 
+         release.versionBuild= $versionBuild `,
+        release,
+        {database: process.env.dbName} //'neo4j'
+      )
+      .then((result) => { })//return result.records.map( (r) => r.get('Issue') ) })
+      .catch( (error) => { console.log("create node error " + error)}); //console.error(error) })                      
+      await sleep(100);
+
+    });
+
+    console.log("done creating nodes, creating relationships");
+    releases.forEach(async function(release){    
+      // create relationship to the parent if exists
+      // create relationsip to the next if exists
+      //@todo check the relationship direction 
+        driver.executeQuery(
+            `MATCH (a:Release), (b:Release) 
+            WHERE a.version = $version AND b.version = $parentVersion 
+            CREATE (a)-[r:PARENT]->(b) 
+            RETURN type(r)`,
+            release,
+            {database: process.env.dbName} //'neo4j'
+          )
+          .then((result) => {  })//return result.records.map( (r) => r.get('Issue') ) })
+          .catch( (error) => { console.log("create parent rel error " + error)}); //console.error(error) })    
+          await sleep(100);
+
+          driver.executeQuery(
+            `MATCH
+            (a:Release),
+            (b:Release)
+            WHERE a.version = $version AND b.version = $nextVersion
+            CREATE (a)-[r:Next]->(b)
+            RETURN type(r)`,
+            release,
+            {database: process.env.dbName} //'neo4j'
+          )
+          .then((result) => {  })//return result.records.map( (r) => r.get('Issue') ) })
+          .catch( (error) => { console.log("create next rel error " + error)}); //console.error(error) })    
+          await sleep(100);
+
+    });
+
+//    return res.json(releases);
+
+    driver.executeQuery(
+      'create constraint if not exists for (n:Issue) require (n.jiraPrimary) is node key',
+      {},
+      {database: process.env.dbName} //'neo4j'
+    )
+    .then((result) => { })//return result.records.map( (r) => r.get('Issue') ) })
+    .catch( (error) => { return error}) //console.error(error) })
+
+    console.log("creating issues");
+    issues.forEach(async function(issue) {
+      console.log(issue.jiraPrimary);
       driver.executeQuery(
         `MERGE (issue:Issue{jiraPrimary: $jiraPrimary}) 
           SET issue.issueTitle = $issueTitle, 
@@ -65,55 +143,50 @@ routes.get('/parseIssues', async (req, res) => {
               issue.workaround = trim($workaround), 
               issue.fix = $fix, 
               issue.jiraPrimaryDateString = $jiraPrimaryDateString,  
-              issue.jiras = $jiras
-              MERGE (oldestR:Release{version:$affectedVersionOldest}) 
-              MERGE (newestR:Release{version:$affectedVersionNewest}) 
-              MERGE (issue)-[:FIRST_SEEN_IN]->(oldestR)
-              MERGE (issue)-[:LAST_SEEN_IN]->(newestR)
-          WITH [oldestR, newestR] as releases
-          CALL {
-            WITH releases
-            UNWIND releases as release
-            WITH release, split(release.version,'.') as rsplit
-            WHERE not exists { (release)-[:PARENT]->() }
-            AND  size(rsplit) = 3
-            MERGE (pr:Release{version: apoc.text.join(vsplit[0..-1], '.')})
-            MERGE (release)-[:PARENT]->(pr)
-            return collect(pr) as maintenances
-          }
-          WITH releases + maintenances as releases
-          CALL {
-            WITH releases
-            UNWIND releases as release
-            WITH release, split(release.version,'.') as rsplit
-            WHERE not exists { (release)-[:PARENT]->() }
-            AND  size(rsplit) = 2
-            MERGE (pr:Release{version: apoc.text.join(vsplit[0..-1], '.')})
-            MERGE (release)-[:PARENT]->(pr)
-            return collect(pr) as features
-          }
-          WITH releases + features as releases  
-          CALL {
-            WITH releases
-            UNWIND releases as release
-            WITH release, split(release.version,'.') as rsplit
-            WHERE not exists { (release)-[:PARENT]->() }
-            AND  size(rsplit) = 1
-            AND not release.version =  'All releases'
-            MERGE (pr:Release{version: 'All releases'})
-            MERGE (release)-[:PARENT]->(pr)
-          }
-          `,
+              issue.affectedVersionOldest = $affectedVersionOldest,
+              issue.affectedVersionNewest = $affectedVersionNewest,
+              issue.jiras = $jiras`,
         issue,
-        {database: process.env.dbName}
+        {database: process.env.dbName} //'neo4j'
       )
       .then((result) => { })//return result.records.map( (r) => r.get('Issue') ) })
-      .catch( (error) => { return error}) //console.error(error) })
-    });
+      .catch( (error) => { return error}); //console.error(error) })
+      await sleep(100);
+
+      driver.executeQuery(
+        `MATCH
+        (i:Issue),
+        (b:Release)
+        WHERE i.jiraPrimary = $jiraPrimary AND b.version = $affectedVersionOldest
+        CREATE (i)-[r:FIRST_SEEN_IN]->(b)
+        RETURN type(r)`,
+        issue,
+        {database: process.env.dbName} //'neo4j'
+      )
+      .then((result) => {  })//return result.records.map( (r) => r.get('Issue') ) })
+      .catch( (error) => { console.log("create first_seen_in rel error " + error)}); //console.error(error) })    
+      await sleep(100);
+
+      driver.executeQuery(
+        `MATCH
+        (i:Issue),
+        (b:Release)
+        WHERE i.jiraPrimary = $jiraPrimary AND b.version = $affectedVersionNewest
+        CREATE (i)-[r:LAST_SEEN_IN]->(b)
+        RETURN type(r)`,
+        issue,
+        {database: process.env.dbName} //'neo4j'
+      )
+      .then((result) => {  })//return result.records.map( (r) => r.get('Issue') ) })
+      .catch( (error) => { console.log("create first_seen_in rel error " + error)}); //console.error(error) })    
+
+        });
+      await sleep(100);
 
     return res.json(issues);
   } catch(ex) {
-    return ex.message;
+    console.log(ex);
+    return res.json(ex.message);
   }
 
   // route for releases

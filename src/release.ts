@@ -12,7 +12,13 @@ class Release {
     // datePlain -- e.g., "2022-09-15"
     // dateUTC -- e.g., "2023-06-14T09:32:41.070Z"
     type: String  
-    version: String[]
+    version: String
+    versionMajor: number
+    versionMinor: number
+    versionBuild: number
+    parentVersion: String
+    nextVersion: String
+    versions: String[]
     product: String
     datePlain: String
     dateUTC: String

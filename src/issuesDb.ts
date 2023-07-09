@@ -1,4 +1,5 @@
 import neo4j from 'neo4j-driver'
+require("dotenv").config();
 import { Driver } from 'neo4j-driver-core';
 require("dotenv").config();
 

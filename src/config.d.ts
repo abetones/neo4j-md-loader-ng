@@ -7,6 +7,7 @@ declare global {
       dbName:string;
       appPort:string;
       issuesFilePath:string;
+      releasesFilePath:string;
     }
   }
 }

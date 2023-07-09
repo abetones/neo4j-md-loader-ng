@@ -17,22 +17,20 @@ yarn install
 ### Replace hard-coded cruft
 
 Put the markdown file containing issues in top level folder.
+Put the releases.json file in the top level folder.
 
 **.env**
 - create a .env file with contents like:
 
 ```
-dbName="tshoot"
+dbName="neo4j"
 dbUser="neo4j"
 dbPass="my_secret_password"
-dbUri="neo4j://localhost:7687"
+dbUri="neo4j://localhost"
 appPort="4444"
 issuesFilePath="../issues.mdx"
+releasesFilePath="../releases.json"
 ```
-
-**src/routes.ts**
-- line 20 replaces issues.mdx with the name of your markdown file
-- line 26 replaces database name ('test') with name of your database
 
 ### Start in dev mode
 
@@ -50,5 +48,4 @@ This will parse the issues file and load the issues into the specified Neo4j dat
 
 ## Todo
 
-- [ ] Database connection details are hard coded, also database name.
 - [ ] Proper organization of code and add model classes/interfaces
