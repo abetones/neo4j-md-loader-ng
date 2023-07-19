@@ -25,9 +25,9 @@ Put the markdown file containing issues in top level folder.
 dbName="tshoot2"
 dbUser="neo4j"
 dbPass="my_secret_password"
-dbUri="neo4j://localhost:7687"
+dbUri="bolt://localhost:7687"
 appPort="4444"
-issuesFilePath="../issues.mdx"
+issuesFilePath="../sanitized_public_known_issues.mdx"
 ```
 
 **src/routes.ts**
